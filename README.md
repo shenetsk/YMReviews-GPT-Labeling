@@ -2,7 +2,8 @@
  Streamlit app for labeling Yandex.Market product reviews with GPT using various prompt approaches:
  - Zero-shot
  - Chain of Thoughts
- - Self-Reflection
+ - Self-Reflection  
+   
  Binary label defines whether each review contains information about a considered product property and can be used to make assumptions about the property.  
 
 ## Installation

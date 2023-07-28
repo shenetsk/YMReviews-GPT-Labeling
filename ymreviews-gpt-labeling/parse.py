@@ -18,7 +18,7 @@ import streamlit as st
 # @st.cache_resource
 def get_driver():
     options = Options()
-    # options.add_argument('--headless')
+    options.add_argument('--headless')
 
     ua = UserAgent()
     user_agent = ua.random
