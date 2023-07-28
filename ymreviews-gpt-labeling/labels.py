@@ -5,6 +5,8 @@ import os
 import pandas as pd
 import streamlit as st
 
+MODEL = "gpt-3.5-turbo"
+
 def openai_key_load():
     environ_key = "OPENAI_API_KEY"
     if environ_key not in os.environ:
@@ -35,25 +37,25 @@ def calculate_cost(chat_completion, model_name):
 def openai_chat_completion_request(prompt):
     openai.api_key = openai_key_load()
 
-    model_name = "gpt-3.5-turbo"
-
     chat_completion = openai.ChatCompletion.create(
-        model=model_name,
+        model=MODEL,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.0,
     )
-    request_cost = calculate_cost(chat_completion, model_name)
+    request_cost = calculate_cost(chat_completion, MODEL)
     return chat_completion.choices[0].message.content, request_cost
 
-def product_property_prompt(product_name):
+def product_property_prompt(product_name, reviews):
     prompt = (
         f"I parsed a marketplace page of the following product: {product_name}\n"
+        f"Here are some reviews to the product:\n"
+        f"{reviews}\n\n"
         f"Your task is to define several possible subjective performance characteristics which can be used to describe the product.\n"
-        f"The result should be defined by the product category.\n"
-        f"Provide output as the list, containing chosen properties, as shown in this template:\n\n"
         f"EXAMPLE:\n"
         f"Product: Принтер с термопечатью Xiaomi Mijia AR ZINK, цветн., меньше A6, белый\n"
         f"Output:\n[Качество печати, Быстрота печати, Скорость сканирования]"
+        f"The result should be defined by the product category as well as characteristics from the reviews.\n"
+        f"Provide output on a separate line as python list, containing chosen properties."
     )
     return prompt
 
@@ -94,27 +96,28 @@ def chain_of_thought_review_label_prompt(review_text, product_name, property):
     )
     return prompt
 
-def reflection_label_prompt(review_text, product_name, property):
+def reflection_label_prompt(review_text, product_name, property, base_cot_response=None):
     base_cot_prompt = chain_of_thought_review_label_prompt(review_text, product_name, property)
-    initial_response = openai_chat_completion_request(base_cot_prompt)[0]
+    if not base_cot_response:
+        base_cot_response = openai_chat_completion_request(base_cot_prompt)[0]
     
     reflection_prompt = (
         f"You are an advanced reasoning agent that can improve based on self reflection. "
         f"You will be given a previous reasoning trial in which you were given a question to answer. "
         f"Your task is to evaluate if the provided answer is correct and whether its reasoning follows the GUIDELINES.\n\n"
+        f"Here is the first reasoning trial for you to analyse:\n"
+        f"QUESTION: {base_cot_prompt}\n"
+        f"ANSWER: {base_cot_response}\n\n"
         f"After completing the analysis, if the provided answer is incorrect, improve the reasoning to make final step-by-step decision about the label value.\n"
         f"Based on the corrected reasoning please label this review with a binary flag, \
             which is equal to 1 if this review contains concrete information about {property} of the product, \
             and 0 otherwise.\n"
         f"Finish your output with separate line containing single resulting integer value without accompanying text or labels \
             using this template: 'Label:\\n0' or 'Label:\\n1'\n\n"
-        f"Here is the first reasoning trial for you to analyse:\n"
-        f"QUESTION: {base_cot_prompt}\n"
-        f"ANSWER: {initial_response}\n\n"
     )
     return reflection_prompt
 
-def label_prediction(product_name, reviews, property, method='zero-shot'):
+def label_prediction(product_name, reviews, property, method='zero-shot', base_cot_responses=None):
     request_cost = 0
     pred_labels = []
     reasonings = []
@@ -128,18 +131,31 @@ def label_prediction(product_name, reviews, property, method='zero-shot'):
     percent_complete = 0
     progress_bar = st.progress(percent_complete, text=f"{int(percent_complete / len(reviews) * 100)}%")
 
-    for review_text in reviews:
-        prompt = label_prompt(review_text, product_name, property)
+    for idx, review_text in enumerate(reviews):
+        if method == 'reflection' and base_cot_responses:
+            cot_response = base_cot_responses[idx]
+            prompt = label_prompt(review_text, product_name, property, base_cot_response=cot_response)
+        else:
+            prompt = label_prompt(review_text, product_name, property)
+
         try:
             response_text, inter_request_cost = openai_chat_completion_request(prompt)
-        except openai.error.ServiceUnavailableError:
-            time.sleep(5)
-            response_text, inter_request_cost = openai_chat_completion_request(prompt)
         except:
-            response_text, inter_request_cost = None, None
+            iter = 0
+            while iter < 3:
+                try: 
+                    time.sleep(2)
+                    response_text, inter_request_cost = openai_chat_completion_request(prompt)
+                    break
+                except:
+                    continue
+            response_text, inter_request_cost = '', 0
 
         reasonings.append(response_text)
-        response_label = int(response_text.strip('.\n\'')[-1])
+        try:
+            response_label = int(response_text.strip('.\n\'')[-1])
+        except:
+            response_label = None
         pred_labels.append(response_label)
 
         request_cost += inter_request_cost
