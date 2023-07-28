@@ -148,7 +148,7 @@ def label_prediction(product_name, reviews, property, method='zero-shot', base_c
                     response_text, inter_request_cost = openai_chat_completion_request(prompt)
                     break
                 except:
-                    continue
+                    iter += 1
             response_text, inter_request_cost = '', 0
 
         reasonings.append(response_text)

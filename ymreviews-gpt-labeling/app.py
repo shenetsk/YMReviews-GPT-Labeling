@@ -42,11 +42,12 @@ def label_data():
     st.session_state.data[URL]['properties'][PROPERTY]['labels'].update({'reflection': pred_labels_reflection})
     st.session_state.data[URL]['properties'][PROPERTY]['responses'].update({'reflection': responses_full_reflection})
 
-    labels = reviews_df.copy()
-    labels['Zero-shot'] = pred_labels_zero_shot
-    labels['Chain of Thoughts'] = pred_labels_cot
-    labels['Self-Reflection'] = pred_labels_reflection
-    labels = labels.dropna(subset=['Zero-shot', 'Chain of Thoughts', 'Self-Reflection'])
+    labels_df = pd.DataFrame({
+        'Zero-shot': pred_labels_zero_shot,
+        'Chain of Thoughts': pred_labels_cot,
+        'Self-Reflection': pred_labels_reflection 
+    }, dtype='int64')
+    labels = pd.concat([reviews_df, labels_df], axis=1).dropna(subset=['Zero-shot', 'Chain of Thoughts', 'Self-Reflection'])
 
     return labels, responses_full_zero_shot, responses_full_cot, responses_full_reflection
 
